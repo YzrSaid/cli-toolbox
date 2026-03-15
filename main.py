@@ -28,16 +28,25 @@ def clear_screen() -> None:
 
 def print_banner() -> None:
     """
-    Display the welcome banner for the CLI Toolbox launcher.
+    Display the main launcher banner.
     """
-    print(f"Welcome to {PROJECT_NAME}\n")
-    print(f"Developer: {DEVELOPER}")
-    print("© 2026 | All Rights Reserved.")
+    print(
+        r"""
+  _____ _      _____   _______          _ _                
+ / ____| |    |_   _| |__   __|        | | |               
+| |    | |      | |      | | ___   ___ | | |__   _____  __
+| |    | |      | |      | |/ _ \ / _ \| | '_ \ / _ \ \/ /
+| |____| |____ _| |_     | | (_) | (_) | | |_) | (_) >  < 
+ \_____|______|_____|    |_|\___/ \___/|_|_.__/ \___/_/\_\
+"""
+    )
+    print(f"{DEVELOPER}")
+    print("© 2026 All Rights Reserved.")
 
 
 def print_menu() -> None:
     """
-    Display the list of available tools and options.
+    Display the list of available tools and Options.
     """
     print("\nAvailable Options:\n")
     print(" 1 - Image Converter")
@@ -53,11 +62,9 @@ def open_source_code() -> None:
 
     try:
         opened = webbrowser.open(SOURCE_CODE_URL)
-
         if not opened:
             print("Unable to open browser automatically.")
             print(f"Source Code: {SOURCE_CODE_URL}")
-
     except Exception:
         print("Unable to open browser automatically.")
         print(f"Source Code: {SOURCE_CODE_URL}")

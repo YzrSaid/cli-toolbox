@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-convert_pics.py
-
 A reusable CLI tool for converting images either in batch or individually.
 
 Features:
@@ -14,7 +12,6 @@ Features:
 
 from __future__ import annotations
 
-from statistics import mode
 import sys
 import webbrowser
 from pathlib import Path
@@ -26,13 +23,9 @@ from PIL import Image
 # Application metadata
 # ------------------------------------------------------------
 
-# Display name shown in the CLI banner.
 APP_NAME = "Picture Converter of CLI Toolbox"
+APP_VERSION = "1.1.0"
 
-# Current version of the tool.
-APP_VERSION = "1.0.0"
-
-# Public links used by the post-conversion menu.
 SOURCE_CODE_URL = "https://github.com/YzrSaid/cli-toolbox"
 GITHUB_PROFILE_URL = "https://github.com/YzrSaid"
 
@@ -47,8 +40,8 @@ GITHUB_PROFILE_URL = "https://github.com/YzrSaid"
 # - output_ext: file extension to use for the converted output
 FORMATS: Dict[str, Dict[str, object]] = {
     "1": {
-        "label": "JPG / JPEG",
-        "extensions": (".jpg", ".jpeg"),
+        "label": "JPG / JPEG / JFIF",
+        "extensions": (".jpg", ".jpeg", ".jfif"),
         "save_format": "JPEG",
         "output_ext": ".jpg",
     },
@@ -208,7 +201,6 @@ def ensure_output_folder(folder: str | None) -> Path:
     else:
         output_path = get_default_output_folder().resolve()
 
-    # Ensure the destination folder exists before writing files.
     output_path.mkdir(parents=True, exist_ok=True)
     return output_path
 
@@ -230,8 +222,6 @@ def convert_image_for_target(img: Image.Image, output_format: str) -> Image.Imag
         Image.Image: A Pillow image converted to a compatible mode.
     """
     if output_format == "JPEG":
-        # JPEG does not support transparency, so transparent images must
-        # be flattened onto a white background first.
         if img.mode in ("RGBA", "LA", "P"):
             background = Image.new("RGB", img.size, (255, 255, 255))
 
@@ -244,17 +234,14 @@ def convert_image_for_target(img: Image.Image, output_format: str) -> Image.Imag
         return img.convert("RGB")
 
     if output_format in {"PNG", "WEBP", "TIFF", "GIF", "BMP"}:
-        # Preserve alpha-capable formats when possible.
         if img.mode in ("RGBA", "LA"):
             return img
 
-        # Palette-based images are converted to RGBA for better compatibility.
         if img.mode == "P":
             return img.convert("RGBA")
 
         return img.convert("RGB")
 
-    # Fallback behavior for unexpected or future formats.
     return img.convert("RGB")
 
 
@@ -368,31 +355,23 @@ def convert_single_file(
     Returns:
         bool: True if conversion succeeds, otherwise False.
     """
-    # Retrieve the target format metadata from the format registry.
     target_info = FORMATS[target_key]
     target_ext = target_info["output_ext"]
     target_format = target_info["save_format"]
 
     try:
         with Image.open(input_file) as img:
-            # Prepare the image mode for the selected output format.
             converted = convert_image_for_target(img, str(target_format))
-
-            # Build the output file path while preserving the original filename.
             output_file = output_folder / f"{input_file.stem}{target_ext}"
 
-            # Save arguments are built dynamically depending on the format.
             save_kwargs = {}
 
-            # JPEG and WEBP support configurable quality.
             if target_format in ("JPEG", "WEBP"):
                 save_kwargs["quality"] = quality
 
-            # WEBP supports a compression method; 6 is typically better quality/size balance.
             if target_format == "WEBP":
                 save_kwargs["method"] = 6
 
-            # Optimize can help reduce file size for JPEG and PNG.
             if target_format in ("JPEG", "PNG"):
                 save_kwargs["optimize"] = True
 
@@ -432,7 +411,6 @@ def batch_convert(
     source_info = FORMATS[source_key]
     source_exts = source_info["extensions"]
 
-    # Collect only files matching the selected source format.
     files = [
         file_path
         for file_path in input_folder.iterdir()
@@ -581,9 +559,7 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
             mode = prompt_mode()
 
-            # Handle special options before continuing
             if mode == "3":
-                # Return to CLI Toolbox main menu
                 raise KeyboardInterrupt
 
             if mode == "4":
@@ -594,7 +570,6 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
             target_key = prompt_target_format(source_key)
 
             if mode == "1":
-                # Batch mode expects a folder as input.
                 input_folder_raw = prompt_non_empty(
                     "\nEnter the absolute input folder path: "
                 )
@@ -610,7 +585,6 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
                 return mode, source_key, target_key, input_path, output_path
 
-            # Individual mode expects a single file as input.
             input_file_raw = prompt_non_empty("\nEnter the absolute input file path: ")
             output_folder_raw = input(
                 f"Enter the absolute output folder path\n"
@@ -619,7 +593,6 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
             input_path = ensure_valid_input_file(input_file_raw)
 
-            # Verify that the selected source format matches the actual file extension.
             allowed_exts = FORMATS[source_key]["extensions"]
             if input_path.suffix.lower() not in allowed_exts:
                 raise ValueError(
@@ -661,7 +634,6 @@ def interactive_mode() -> None:
                 break
 
         except KeyboardInterrupt:
-            # Used to return to CLI Toolbox main menu
             return
 
 
