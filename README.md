@@ -4,7 +4,7 @@
 
 ---
 
-# Features
+## Features
 
 - Interactive command-line tools
 - Cross-platform support (Linux, macOS, Windows)
@@ -15,7 +15,7 @@
 
 ---
 
-# Available Tools
+## Available Tools
 
 | Tool | Description |
 |------|-------------|
@@ -25,7 +25,7 @@ More tools will be added over time.
 
 ---
 
-# Repository Structure
+## Repository Structure
 
 ```text
 cli-toolbox/
@@ -48,7 +48,7 @@ cli-toolbox/
 
 ---
 
-# Requirements
+## Requirements
 
 - Python **3.9 or newer**
 
@@ -66,7 +66,7 @@ python3 --version
 
 ---
 
-# If Python Is Not Installed
+## If Python Is Not Installed
 
 Download Python from:
 
@@ -84,16 +84,16 @@ If you need help adding Python to PATH, you may watch this tutorial (not my vide
 
 ---
 
-# Setup and Run
+## Setup and Run
 
-## Step 1: Clone the repository
+### Step 1: Clone the repository
 
 ```bash
 git clone https://github.com/YzrSaid/cli-toolbox.git
 cd cli-toolbox
 ```
 
-## Step 2: Install the required dependencies
+### Step 2: Install the required dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -101,7 +101,7 @@ pip install -r requirements.txt
 
 This installs the libraries needed for all tools in the project.
 
-## Step 3: Run CLI Toolbox
+### Step 3: Run CLI Toolbox
 
 ```bash
 python main.py
@@ -115,7 +115,7 @@ python3 main.py
 
 ---
 
-# Optional: Virtual Environment
+## Optional: Virtual Environment
 
 > **Note:** This step is mainly recommended for **Linux users** or for users who want to avoid problems with **Python package and dependency versions**.  
 > Beginners on Windows can usually skip this if the project runs fine normally.
@@ -154,7 +154,7 @@ python main.py
 
 ---
 
-# Developer
+## Developer
 
 Created by **Mohammad Aldrin Said**
 
