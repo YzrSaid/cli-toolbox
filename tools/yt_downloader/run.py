@@ -3,11 +3,10 @@ YouTube Downloader Tool
 
 Features:
 - Full video or clipped segment download
+- Audio-only download (MP3 / M4A)
 - Optional custom save path
-- Quality selection
-- Output preference selection:
-    - Preferred/original compatible format (faster)
-    - MP4 (may take longer)
+- Quality selection (video)
+- Output preference selection (video)
 - Rich progress display
 """
 
@@ -33,51 +32,47 @@ from rich.progress import (
 console = Console()
 
 
+# ─── Timestamp helpers ────────────────────────────────────────────────────────
+
+def validate_timestamp(ts: str) -> bool:
+    """
+    Accept MM:SS or H:MM:SS (or HH:MM:SS).
+      1:30       → 1 min 30 sec
+      10:45      → 10 min 45 sec
+      1:02:30    → 1 hr 2 min 30 sec
+      01:30:00   → 1 hr 30 min 0 sec
+    """
+    return bool(re.match(r"^\d{1,2}:\d{2}(:\d{2})?$", ts))
+
+
 def validate_time_range(time_range: str) -> bool:
-    """
-    Accept:
-    2:00-2:11
-    12:34-15:20
-    1:02:03-1:05:10
-    """
-    pattern = r"^\d{1,2}:\d{2}(?::\d{2})?-\d{1,2}:\d{2}(?::\d{2})?$"
-    return bool(re.match(pattern, time_range))
+    parts = time_range.split("-", 1)
+    if len(parts) != 2:
+        return False
+    return validate_timestamp(parts[0]) and validate_timestamp(parts[1])
 
 
 def parse_timestamp_to_seconds(timestamp: str) -> int:
-    """
-    Convert:
-    2:00 -> 120
-    12:34 -> 754
-    1:02:03 -> 3723
-    """
-    parts = [int(part) for part in timestamp.split(":")]
-
-    if len(parts) == 2:
-        minutes, seconds = parts
+    segments = [int(p) for p in timestamp.split(":")]
+    if len(segments) == 2:
+        minutes, seconds = segments
         return minutes * 60 + seconds
-
-    if len(parts) == 3:
-        hours, minutes, seconds = parts
+    if len(segments) == 3:
+        hours, minutes, seconds = segments
         return hours * 3600 + minutes * 60 + seconds
-
-    raise ValueError("Invalid timestamp format")
+    raise ValueError("Invalid timestamp format.")
 
 
 def parse_time_range_to_seconds(time_range: str) -> tuple[int, int]:
-    """
-    Convert:
-    2:00-3:00 -> (120, 180)
-    """
-    start_text, end_text = time_range.split("-")
-    start_seconds = parse_timestamp_to_seconds(start_text)
-    end_seconds = parse_timestamp_to_seconds(end_text)
-
-    if end_seconds <= start_seconds:
+    start_text, end_text = time_range.split("-", 1)
+    start_sec = parse_timestamp_to_seconds(start_text)
+    end_sec = parse_timestamp_to_seconds(end_text)
+    if end_sec <= start_sec:
         raise ValueError("End time must be greater than start time.")
+    return start_sec, end_sec
 
-    return start_seconds, end_seconds
 
+# ─── Prompts ──────────────────────────────────────────────────────────────────
 
 def get_save_directory() -> str:
     console.print("\n[bold cyan]Where do you want to save the file?[/bold cyan]")
@@ -88,7 +83,6 @@ def get_save_directory() -> str:
         return os.getcwd()
 
     output_dir = Path(save_path).expanduser().resolve()
-
     try:
         output_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -98,11 +92,67 @@ def get_save_directory() -> str:
     return str(output_dir)
 
 
+def get_download_type() -> str:
+    """Returns 'video' or 'audio'."""
+    menu = (
+        "[bold green][1][/bold green] Video\n"
+        "[bold green][2][/bold green] Audio only  [dim](MP3 / M4A)[/dim]"
+    )
+    console.print(Panel(menu, title="[bold yellow]Download Type[/bold yellow]", border_style="white"))
+    while True:
+        choice = input("\n[>] Select type: ").strip()
+        if choice == "1":
+            return "video"
+        if choice == "2":
+            return "audio"
+        console.print("[red]Enter 1 or 2.[/red]")
+
+
+def prompt_time_range() -> str:
+    """
+    Loop until the user enters a valid time range or leaves it blank (meaning full download).
+    Returns the raw time range string, e.g. '1:30:00-1:45:00'.
+    """
+    hint = (
+        "[dim]Format — MM:SS or H:MM:SS[/dim]\n"
+        "[dim]Examples:[/dim]\n"
+        "[dim]  2:30-5:00       → from 2 min 30 sec to 5 min 0 sec[/dim]\n"
+        "[dim]  1:30:00-1:45:00 → from 1 hr 30 min to 1 hr 45 min[/dim]\n"
+        "[dim]  0:00:30-0:02:00 → from 30 sec to 2 min[/dim]"
+    )
+    console.print(Panel(hint, title="[bold yellow]Clip Range[/bold yellow]", border_style="bright_black"))
+
+    while True:
+        time_range = input("\n[>] Timestamp (start-end): ").strip()
+
+        if not validate_time_range(time_range):
+            console.print(
+                "[red]Invalid format.[/red] "
+                "[dim]Use MM:SS-MM:SS or H:MM:SS-H:MM:SS, e.g. 1:30:00-1:45:00[/dim]"
+            )
+            continue
+
+        try:
+            parse_time_range_to_seconds(time_range)
+            return time_range
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+
+
+def prompt_clip_choice() -> bool:
+    """Returns True if the user wants a clip."""
+    console.print("\n[bold cyan]Download a specific clip?[/bold cyan]")
+    while True:
+        choice = input("[>] Enter (y/n): ").strip().lower()
+        if choice == "y":
+            return True
+        if choice == "n":
+            return False
+        console.print("[red]Enter y or n.[/red]")
+
+
 def get_quality_choice() -> tuple[str, str, str]:
-    """
-    Returns:
-        format_selector, sort_selector, quality_label
-    """
+    """Returns format_selector, sort_selector, quality_label."""
     menu = (
         "[bold green][1][/bold green] Best quality\n"
         "[bold green][2][/bold green] 1080p\n"
@@ -110,12 +160,9 @@ def get_quality_choice() -> tuple[str, str, str]:
         "[bold green][4][/bold green] 480p\n"
         "[bold green][5][/bold green] 360p"
     )
-    console.print(
-        Panel(menu, title="[bold yellow]Video Quality[/bold yellow]", border_style="white")
-    )
+    console.print(Panel(menu, title="[bold yellow]Video Quality[/bold yellow]", border_style="white"))
 
     choice = input("\n[>] Select quality: ").strip()
-
     format_selector = "bv*+ba/b"
 
     if choice == "2":
@@ -126,32 +173,40 @@ def get_quality_choice() -> tuple[str, str, str]:
         return format_selector, "res:480", "480p"
     if choice == "5":
         return format_selector, "res:360", "360p"
-
     return format_selector, "quality", "Best quality"
 
 
 def get_output_preference() -> tuple[str, str]:
-    """
-    Returns:
-        output_preference, output_label
-    """
+    """Returns output_preference, output_label."""
     menu = (
         "[bold green][1][/bold green] Preferred format\n"
         "[dim]    Faster, but may be webm/mkv depending on source[/dim]\n\n"
         "[bold green][2][/bold green] MP4\n"
-        "[dim]    Note: MP4 may take longer than preferred formats[/dim]"
+        "[dim]    May take longer due to remuxing[/dim]"
     )
-    console.print(
-        Panel(menu, title="[bold yellow]Output Format[/bold yellow]", border_style="white")
-    )
+    console.print(Panel(menu, title="[bold yellow]Output Format[/bold yellow]", border_style="white"))
 
     choice = input("\n[>] Select output format: ").strip()
-
     if choice == "2":
         return "mp4", "MP4"
-
     return "preferred", "Preferred format"
 
+
+def get_audio_format_choice() -> tuple[str, str]:
+    """Returns codec, label."""
+    menu = (
+        "[bold green][1][/bold green] MP3   [dim](requires ffmpeg)[/dim]\n"
+        "[bold green][2][/bold green] M4A   [dim](no re-encoding — faster, no ffmpeg needed)[/dim]"
+    )
+    console.print(Panel(menu, title="[bold yellow]Audio Format[/bold yellow]", border_style="white"))
+
+    choice = input("\n[>] Select format: ").strip()
+    if choice == "2":
+        return "m4a", "M4A"
+    return "mp3", "MP3"
+
+
+# ─── yt-dlp option builders ───────────────────────────────────────────────────
 
 class QuietLogger:
     def debug(self, msg: str) -> None:
@@ -164,7 +219,27 @@ class QuietLogger:
         console.print(f"\n[bold red]Error:[/bold red] {msg}")
 
 
-def build_ydl_opts(
+def _base_opts(save_dir: str, output_template: str) -> dict:
+    return {
+        "paths": {"home": save_dir},
+        "outtmpl": {"default": output_template},
+        "logger": QuietLogger(),
+        "noprogress": True,
+        "quiet": True,
+        "no_warnings": True,
+    }
+
+
+def _apply_time_range(ydl_opts: dict, time_range: str) -> dict:
+    start_sec, end_sec = parse_time_range_to_seconds(time_range)
+    ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
+        None, [(start_sec, end_sec)]
+    )
+    ydl_opts["force_keyframes_at_cuts"] = True
+    return ydl_opts
+
+
+def build_video_opts(
     save_dir: str,
     output_template: str,
     format_selector: str,
@@ -172,32 +247,46 @@ def build_ydl_opts(
     output_preference: str,
     time_range: str | None = None,
 ) -> dict:
-    ydl_opts: dict = {
-        "paths": {"home": save_dir},
-        "outtmpl": {"default": output_template},
-        "format": format_selector,
-        "logger": QuietLogger(),
-        "noprogress": True,
-        "quiet": True,
-        "no_warnings": True,
-        "format_sort": [sort_selector],
-    }
-
-    if time_range:
-        start_seconds, end_seconds = parse_time_range_to_seconds(time_range)
-        ydl_opts["download_ranges"] = yt_dlp.utils.download_range_func(
-            None,
-            [(start_seconds, end_seconds)],
-        )
-        ydl_opts["force_keyframes_at_cuts"] = True
+    opts = _base_opts(save_dir, output_template)
+    opts["format"] = format_selector
+    opts["format_sort"] = [sort_selector]
 
     if output_preference == "mp4":
-        ydl_opts["format_sort"] = [sort_selector, "ext:mp4:m4a"]
-        ydl_opts["merge_output_format"] = "mp4"
-        ydl_opts["remuxvideo"] = "mp4"
+        opts["format_sort"] = [sort_selector, "ext:mp4:m4a"]
+        opts["merge_output_format"] = "mp4"
+        opts["remuxvideo"] = "mp4"
 
-    return ydl_opts
+    if time_range:
+        opts = _apply_time_range(opts, time_range)
 
+    return opts
+
+
+def build_audio_opts(
+    save_dir: str,
+    output_template: str,
+    codec: str,
+    time_range: str | None = None,
+) -> dict:
+    opts = _base_opts(save_dir, output_template)
+
+    if codec == "mp3":
+        opts["format"] = "bestaudio/best"
+        opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }]
+    else:  # m4a — no re-encoding, no ffmpeg required
+        opts["format"] = "bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio"
+
+    if time_range:
+        opts = _apply_time_range(opts, time_range)
+
+    return opts
+
+
+# ─── Download runner ──────────────────────────────────────────────────────────
 
 def run_download(url: str, ydl_opts: dict, save_dir: str) -> None:
     with Progress(
@@ -240,7 +329,6 @@ def run_download(url: str, ydl_opts: dict, save_dir: str) -> None:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
-
         except Exception as exc:
             console.print(f"\n[bold red]Download failed:[/bold red] {exc}")
             return
@@ -249,47 +337,7 @@ def run_download(url: str, ydl_opts: dict, save_dir: str) -> None:
     console.print(f"[cyan]Saved to:[/cyan] [green]{save_dir}[/green]")
 
 
-def download_full_video(
-    url: str,
-    save_dir: str,
-    format_selector: str,
-    sort_selector: str,
-    output_preference: str,
-) -> None:
-    console.print("\n[bold cyan]Preparing full video download...[/bold cyan]\n")
-
-    ydl_opts = build_ydl_opts(
-        save_dir=save_dir,
-        output_template="%(title)s.%(ext)s",
-        format_selector=format_selector,
-        sort_selector=sort_selector,
-        output_preference=output_preference,
-    )
-
-    run_download(url, ydl_opts, save_dir)
-
-
-def download_clip(
-    url: str,
-    time_range: str,
-    save_dir: str,
-    format_selector: str,
-    sort_selector: str,
-    output_preference: str,
-) -> None:
-    console.print(f"\n[bold cyan]Preparing clip download[/bold cyan] [dim]({time_range})[/dim]...\n")
-
-    ydl_opts = build_ydl_opts(
-        save_dir=save_dir,
-        output_template="clip_%(title)s.%(ext)s",
-        format_selector=format_selector,
-        sort_selector=sort_selector,
-        output_preference=output_preference,
-        time_range=time_range,
-    )
-
-    run_download(url, ydl_opts, save_dir)
-
+# ─── Entry point ──────────────────────────────────────────────────────────────
 
 def main() -> None:
     console.print(
@@ -300,75 +348,53 @@ def main() -> None:
     )
 
     url = input("\nPaste the YouTube video link: ").strip()
-
     if not url:
         console.print("\n[red]Invalid link.[/red]")
         input("Press Enter to return...")
         return
 
     save_dir = get_save_directory()
+    download_type = get_download_type()
+    want_clip = prompt_clip_choice()
+    time_range = prompt_time_range() if want_clip else None
 
-    console.print("\n[bold cyan]Download specific part only?[/bold cyan]")
-    choice = input("Enter (y/n): ").strip().lower()
+    if download_type == "audio":
+        codec, codec_label = get_audio_format_choice()
 
-    time_range = ""
-    if choice == "y":
-        console.print("\n[bold cyan]Enter the time range.[/bold cyan]")
-        console.print("[dim]Example format: 2:00-2:11[/dim]")
-        console.print("[dim]You can also use: 1:02:03-1:02:20[/dim]\n")
-
-        time_range = input("Timestamp: ").strip()
-
-        if not validate_time_range(time_range):
-            console.print("\n[red]Invalid format.[/red]")
-            console.print("[dim]Correct examples:[/dim]")
-            console.print("[dim]  2:00-2:11[/dim]")
-            console.print("[dim]  1:02:03-1:02:20[/dim]")
-            input("\nPress Enter to return...")
-            return
-
-        try:
-            parse_time_range_to_seconds(time_range)
-        except ValueError as exc:
-            console.print(f"\n[red]Invalid time range:[/red] {exc}")
-            input("\nPress Enter to return...")
-            return
-
-    elif choice != "n":
-        console.print("\n[red]Invalid choice. Please enter y or n.[/red]")
-        input("\nPress Enter to return...")
-        return
-
-    format_selector, sort_selector, quality_label = get_quality_choice()
-    output_preference, output_label = get_output_preference()
-
-    summary = (
-        f"[cyan][>][/cyan] Quality : [green]{quality_label}[/green]\n"
-        f"[cyan][>][/cyan] Output  : [green]{output_label}[/green]\n"
-        f"[cyan][>][/cyan] Save to : [green]{save_dir}[/green]"
-        + (f"\n[cyan][>][/cyan] Range   : [green]{time_range}[/green]" if choice == "y" else "")
-    )
-    console.print(
-        Panel(summary, title="[bold yellow]Download Summary[/bold yellow]", border_style="bright_black")
-    )
-
-    if choice == "y":
-        download_clip(
-            url=url,
-            time_range=time_range,
-            save_dir=save_dir,
-            format_selector=format_selector,
-            sort_selector=sort_selector,
-            output_preference=output_preference,
+        summary_lines = (
+            f"[cyan][>][/cyan] Type    : [green]Audio only[/green]\n"
+            f"[cyan][>][/cyan] Format  : [green]{codec_label}[/green]\n"
+            f"[cyan][>][/cyan] Save to : [green]{save_dir}[/green]"
+            + (f"\n[cyan][>][/cyan] Range   : [green]{time_range}[/green]" if time_range else "")
         )
+        console.print(Panel(summary_lines, title="[bold yellow]Download Summary[/bold yellow]", border_style="bright_black"))
+
+        label = f"audio clip ({time_range})" if time_range else "audio"
+        console.print(f"\n[bold cyan]Preparing {label} download...[/bold cyan]\n")
+
+        template = "clip_%(title)s.%(ext)s" if time_range else "%(title)s.%(ext)s"
+        opts = build_audio_opts(save_dir, template, codec, time_range)
+        run_download(url, opts, save_dir)
+
     else:
-        download_full_video(
-            url=url,
-            save_dir=save_dir,
-            format_selector=format_selector,
-            sort_selector=sort_selector,
-            output_preference=output_preference,
+        format_selector, sort_selector, quality_label = get_quality_choice()
+        output_preference, output_label = get_output_preference()
+
+        summary_lines = (
+            f"[cyan][>][/cyan] Type    : [green]Video[/green]\n"
+            f"[cyan][>][/cyan] Quality : [green]{quality_label}[/green]\n"
+            f"[cyan][>][/cyan] Output  : [green]{output_label}[/green]\n"
+            f"[cyan][>][/cyan] Save to : [green]{save_dir}[/green]"
+            + (f"\n[cyan][>][/cyan] Range   : [green]{time_range}[/green]" if time_range else "")
         )
+        console.print(Panel(summary_lines, title="[bold yellow]Download Summary[/bold yellow]", border_style="bright_black"))
+
+        label = f"clip ({time_range})" if time_range else "full video"
+        console.print(f"\n[bold cyan]Preparing {label} download...[/bold cyan]\n")
+
+        template = "clip_%(title)s.%(ext)s" if time_range else "%(title)s.%(ext)s"
+        opts = build_video_opts(save_dir, template, format_selector, sort_selector, output_preference, time_range)
+        run_download(url, opts, save_dir)
 
     input("\nPress Enter to return to menu...")
 
