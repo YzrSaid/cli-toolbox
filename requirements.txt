@@ -1,1 +1,6 @@
 Pillow
+pillow-heif
+pyinstaller
+pyfiglet
+rich
+yt-dlp

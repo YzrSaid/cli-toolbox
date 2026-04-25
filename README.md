@@ -19,7 +19,7 @@
 
 | Tool | Description |
 |------|-------------|
-| Image Converter | Convert images between formats such as JPG, PNG, WEBP, BMP, TIFF, and GIF |
+| Image Converter | Convert images between formats such as JPG, PNG, WEBP, BMP, TIFF, GIF, ICO, and SVG (with HEIC/HEIF iPhone input support) |
 
 More tools will be added over time.
 
@@ -101,6 +101,8 @@ pip install -r requirements.txt
 
 This installs the libraries needed for all tools in the project.
 
+> HEIC/HEIF support requires `pillow-heif` (already included in `requirements.txt`).
+
 ### Step 3: Run CLI Toolbox
 
 ```bash
@@ -150,6 +152,45 @@ After that, run the project:
 
 ```bash
 python main.py
+```
+
+---
+
+## Build Linux Executable (No Manual Terminal Launch Needed)
+
+You can package this app into a standalone Linux executable.
+
+### 1) Build
+
+```bash
+chmod +x build_linux_executable.sh
+./build_linux_executable.sh
+```
+
+Output files will be created in `dist/`:
+
+- `dist/cli-toolbox` → standalone Linux executable
+- `dist/CLI-Toolbox-Launcher.sh` → double-click launcher (opens terminal automatically)
+- `dist/CLI-Toolbox.desktop` → desktop entry template
+
+### 2) Run
+
+From terminal:
+
+```bash
+./dist/cli-toolbox
+```
+
+Or double-click:
+
+```bash
+./dist/CLI-Toolbox-Launcher.sh
+```
+
+Optional: add app to your Linux app menu:
+
+```bash
+cp dist/CLI-Toolbox.desktop ~/.local/share/applications/
 ```
 
 ---

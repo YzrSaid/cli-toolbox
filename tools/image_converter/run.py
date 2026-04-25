@@ -12,32 +12,41 @@ Features:
 
 from __future__ import annotations
 
+import base64
+from io import BytesIO
 import sys
 import webbrowser
 from pathlib import Path
 from typing import Dict
 
 from PIL import Image
+from rich.console import Console
+from rich.panel import Panel
+
+try:
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    HEIF_SUPPORT_AVAILABLE = True
+except Exception:
+    HEIF_SUPPORT_AVAILABLE = False
 
 # ------------------------------------------------------------
 # Application metadata
 # ------------------------------------------------------------
 
-APP_NAME = "Picture Converter of CLI Toolbox"
-APP_VERSION = "1.1.0"
+APP_NAME = "Image Converter"
+APP_VERSION = "1.2.0"
 
 SOURCE_CODE_URL = "https://github.com/YzrSaid/cli-toolbox"
 GITHUB_PROFILE_URL = "https://github.com/YzrSaid"
+
+console = Console()
 
 # ------------------------------------------------------------
 # Supported image formats
 # ------------------------------------------------------------
 
-# Each menu key maps to:
-# - label: human-readable format name shown in the menu
-# - extensions: accepted input file extensions for that format
-# - save_format: Pillow-compatible format name used when saving
-# - output_ext: file extension to use for the converted output
 FORMATS: Dict[str, Dict[str, object]] = {
     "1": {
         "label": "JPG / JPEG / JFIF",
@@ -74,81 +83,74 @@ FORMATS: Dict[str, Dict[str, object]] = {
         "extensions": (".gif",),
         "save_format": "GIF",
         "output_ext": ".gif",
+        "source": True,
+        "target": True,
+    },
+    "7": {
+        "label": "HEIC / HEIF",
+        "extensions": (".heic", ".heif"),
+        "save_format": "HEIC",
+        "output_ext": ".heic",
+        "source": True,
+        "target": False,
+    },
+    "8": {
+        "label": "ICO",
+        "extensions": (".ico",),
+        "save_format": "ICO",
+        "output_ext": ".ico",
+        "source": True,
+        "target": True,
+    },
+    "9": {
+        "label": "SVG",
+        "extensions": (".svg",),
+        "save_format": "SVG",
+        "output_ext": ".svg",
+        "source": False,
+        "target": True,
     },
 }
 
+for item in FORMATS.values():
+    item.setdefault("source", True)
+    item.setdefault("target", True)
+
 
 def get_default_output_folder() -> Path:
-    """
-    Return the default output directory used when the user
-    does not provide a custom destination.
-
-    Returns:
-        Path: ~/Pictures/converted_pictures
-    """
     return Path.home() / "Pictures" / "converted_pictures"
 
 
 def print_banner() -> None:
-    """
-    Display the main application banner in the terminal.
-    """
-    print(f"{APP_NAME} v{APP_VERSION}")
+    console.print(
+        Panel(
+            f"[bold bright_green]{APP_NAME}[/bold bright_green]  [dim]v{APP_VERSION}[/dim]",
+            border_style="green",
+        )
+    )
 
 
 def prompt_non_empty(message: str) -> str:
-    """
-    Prompt the user until a non-empty input is provided.
-
-    Args:
-        message: The message displayed to the user.
-
-    Returns:
-        str: A non-empty trimmed string.
-    """
     while True:
         value = input(message).strip()
         if value:
             return value
-        print("Input cannot be empty. Please try again.\n")
+        console.print("[red]Input cannot be empty. Please try again.[/red]\n")
 
 
 def open_link(url: str, label: str) -> None:
-    """
-    Attempt to open a URL in the user's default browser.
-
-    If automatic opening fails, the URL is printed so the user
-    can open it manually.
-
-    Args:
-        url: The target URL to open.
-        label: A user-friendly label describing the link.
-    """
-    print(f"\nOpening {label}...")
+    console.print(f"\n[bold cyan]Opening {label}...[/bold cyan]")
     try:
         opened = webbrowser.open(url)
         if not opened:
-            print("Could not automatically open browser.")
-            print(f"{label}: {url}")
+            console.print("[red]Could not automatically open browser.[/red]")
+            console.print(f"{label}: [green]{url}[/green]")
     except Exception:
-        print("Could not automatically open browser.")
-        print(f"{label}: {url}")
+        console.print("[red]Could not automatically open browser.[/red]")
+        console.print(f"{label}: [green]{url}[/green]")
 
 
 def ensure_valid_input_folder(folder: str) -> Path:
-    """
-    Validate that the provided path exists and is a directory.
-
-    Args:
-        folder: The user-provided folder path.
-
-    Returns:
-        Path: A resolved Path object for the input folder.
-
-    Raises:
-        FileNotFoundError: If the folder does not exist.
-        NotADirectoryError: If the path exists but is not a folder.
-    """
     path = Path(folder).expanduser().resolve()
 
     if not path.exists():
@@ -161,18 +163,6 @@ def ensure_valid_input_folder(folder: str) -> Path:
 
 
 def ensure_valid_input_file(file_path: str) -> Path:
-    """
-    Validate that the provided path exists and is a file.
-
-    Args:
-        file_path: The user-provided file path.
-
-    Returns:
-        Path: A resolved Path object for the input file.
-
-    Raises:
-        FileNotFoundError: If the file does not exist or is not a file.
-    """
     path = Path(file_path).expanduser().resolve()
 
     if not path.exists():
@@ -185,17 +175,6 @@ def ensure_valid_input_file(file_path: str) -> Path:
 
 
 def ensure_output_folder(folder: str | None) -> Path:
-    """
-    Resolve and create the output directory.
-
-    If no folder is provided, the default output directory is used.
-
-    Args:
-        folder: Optional user-provided output folder path.
-
-    Returns:
-        Path: A resolved Path object for the output folder.
-    """
     if folder and folder.strip():
         output_path = Path(folder).expanduser().resolve()
     else:
@@ -206,21 +185,6 @@ def ensure_output_folder(folder: str | None) -> Path:
 
 
 def convert_image_for_target(img: Image.Image, output_format: str) -> Image.Image:
-    """
-    Convert an image into a mode suitable for the target format.
-
-    Why this is needed:
-    - JPEG does not support transparency, so transparent images must be
-      placed on a solid background.
-    - Some formats work better with RGB or RGBA depending on the source.
-
-    Args:
-        img: The Pillow image object to prepare.
-        output_format: The Pillow output format, e.g. 'JPEG', 'PNG', 'WEBP'.
-
-    Returns:
-        Image.Image: A Pillow image converted to a compatible mode.
-    """
     if output_format == "JPEG":
         if img.mode in ("RGBA", "LA", "P"):
             background = Image.new("RGB", img.size, (255, 255, 255))
@@ -232,6 +196,13 @@ def convert_image_for_target(img: Image.Image, output_format: str) -> Image.Imag
             return background
 
         return img.convert("RGB")
+
+    if output_format == "ICO":
+        if img.mode in ("RGBA", "LA"):
+            return img.convert("RGBA")
+        if img.mode == "P":
+            return img.convert("RGBA")
+        return img.convert("RGBA")
 
     if output_format in {"PNG", "WEBP", "TIFF", "GIF", "BMP"}:
         if img.mode in ("RGBA", "LA"):
@@ -245,94 +216,106 @@ def convert_image_for_target(img: Image.Image, output_format: str) -> Image.Imag
     return img.convert("RGB")
 
 
+def save_as_svg_with_embedded_png(img: Image.Image, output_file: Path) -> None:
+    rendered = img.convert("RGBA")
+    png_buffer = BytesIO()
+    rendered.save(png_buffer, "PNG", optimize=True)
+
+    encoded = base64.b64encode(png_buffer.getvalue()).decode("ascii")
+    width, height = rendered.size
+
+    svg_content = (
+        f"<svg xmlns=\"http://www.w3.org/2000/svg\" "
+        f"width=\"{width}\" height=\"{height}\" "
+        f"viewBox=\"0 0 {width} {height}\">"
+        f"<image width=\"{width}\" height=\"{height}\" "
+        f"href=\"data:image/png;base64,{encoded}\"/></svg>"
+    )
+
+    output_file.write_text(svg_content, encoding="utf-8")
+
+
+def get_format_choices(
+    *,
+    for_target: bool,
+    excluded_key: str | None = None,
+) -> Dict[str, Dict[str, object]]:
+    flag_name = "target" if for_target else "source"
+
+    return {
+        key: data
+        for key, data in FORMATS.items()
+        if bool(data.get(flag_name)) and key != excluded_key
+    }
+
+
 def print_mode_menu() -> None:
-    """
-    Display the conversion mode options.
-    """
-    print("\nChoose conversion mode:\n")
-    print("  1 - Batch conversion")
-    print("  2 - Individual conversion")
-    print("  3 - Back to main menu")
-    print("  4 - Exit")
-    print()
+    menu = (
+        "[bold green][1][/bold green] Batch conversion\n"
+        "[bold green][2][/bold green] Individual conversion\n"
+        "[bold green][3][/bold green] Back to main menu\n\n"
+        "[bold red][4][/bold red] Exit"
+    )
+    console.print(
+        Panel(
+            menu,
+            title="[bold yellow]Conversion Mode[/bold yellow]",
+            border_style="white",
+        )
+    )
 
 
 def prompt_mode() -> str:
-    """
-    Prompt the user to choose a conversion mode.
-
-    Returns:
-        str: '1', '2', '3', or '4'
-    """
     while True:
         print_mode_menu()
-        choice = input("Enter your choice (1-4): ").strip()
+        choice = input("\n[>] Enter your choice (1-4): ").strip()
 
         if choice in {"1", "2", "3", "4"}:
             return choice
 
-        print("Invalid choice. Please enter 1, 2, 3, or 4.\n")
+        console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]\n")
 
 
-def print_formats(excluded_key: str | None = None) -> None:
-    """
-    Display the available image format options.
-
-    Args:
-        excluded_key: Optional format key to hide from the menu.
-                      This is used so the target format menu does not
-                      show the same option chosen as the source format.
-    """
-    print()
-
-    for key, data in FORMATS.items():
-        if key == excluded_key:
-            continue
-        print(f"  {key} - {data['label']}")
-
-    print()
+def print_formats(
+    *,
+    for_target: bool,
+    excluded_key: str | None = None,
+) -> None:
+    choices = get_format_choices(for_target=for_target, excluded_key=excluded_key)
+    console.print()
+    for key, data in choices.items():
+        console.print(f"  [bold green][{key}][/bold green] {data['label']}")
+    console.print()
 
 
 def prompt_source_format() -> str:
-    """
-    Prompt the user to select the source image format.
-
-    Returns:
-        str: The selected format key.
-    """
     while True:
-        print("\nChoose the source image format:")
-        print_formats()
-        choice = input("Enter source format number: ").strip()
+        console.print("\n[bold cyan]Choose the source image format:[/bold cyan]")
+        print_formats(for_target=False)
+        choice = input("[>] Enter source format number: ").strip()
 
-        if choice in FORMATS:
+        if choice in get_format_choices(for_target=False):
+            if choice == "7" and not HEIF_SUPPORT_AVAILABLE:
+                console.print(
+                    "[red]HEIC/HEIF support is unavailable. Install dependencies with:[/red]\n"
+                    "[dim]pip install -r requirements.txt[/dim]\n"
+                )
+                continue
             return choice
 
-        print("Invalid choice. Please try again.\n")
+        console.print("[red]Invalid choice. Please try again.[/red]\n")
 
 
 def prompt_target_format(excluded_key: str) -> str:
-    """
-    Prompt the user to select the target image format.
-
-    The chosen source format is excluded from the options so the user
-    cannot convert a format into the same format.
-
-    Args:
-        excluded_key: The source format key to exclude.
-
-    Returns:
-        str: The selected target format key.
-    """
     while True:
-        print("\nChoose the target image format:")
-        print_formats(excluded_key=excluded_key)
-        choice = input("Enter target format number: ").strip()
+        console.print("\n[bold cyan]Choose the target image format:[/bold cyan]")
+        print_formats(for_target=True, excluded_key=excluded_key)
+        choice = input("[>] Enter target format number: ").strip()
 
-        if choice in FORMATS and choice != excluded_key:
+        if choice in get_format_choices(for_target=True, excluded_key=excluded_key):
             return choice
 
-        print("Invalid choice. Please choose a different target format.\n")
+        console.print("[red]Invalid choice. Please choose a different target format.[/red]\n")
 
 
 def convert_single_file(
@@ -342,27 +325,20 @@ def convert_single_file(
     target_key: str,
     quality: int = 85,
 ) -> bool:
-    """
-    Convert a single image file into the selected target format.
-
-    Args:
-        input_file: Full path to the source image.
-        output_folder: Folder where the converted file will be saved.
-        source_key: Selected source format key from FORMATS.
-        target_key: Selected target format key from FORMATS.
-        quality: Compression quality used for JPEG and WEBP outputs.
-
-    Returns:
-        bool: True if conversion succeeds, otherwise False.
-    """
     target_info = FORMATS[target_key]
     target_ext = target_info["output_ext"]
     target_format = target_info["save_format"]
 
     try:
         with Image.open(input_file) as img:
-            converted = convert_image_for_target(img, str(target_format))
             output_file = output_folder / f"{input_file.stem}{target_ext}"
+
+            if target_format == "SVG":
+                save_as_svg_with_embedded_png(img, output_file)
+                console.print(f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
+                return True
+
+            converted = convert_image_for_target(img, str(target_format))
 
             save_kwargs = {}
 
@@ -375,13 +351,24 @@ def convert_single_file(
             if target_format in ("JPEG", "PNG"):
                 save_kwargs["optimize"] = True
 
+            if target_format == "ICO":
+                save_kwargs["sizes"] = [
+                    (16, 16),
+                    (24, 24),
+                    (32, 32),
+                    (48, 48),
+                    (64, 64),
+                    (128, 128),
+                    (256, 256),
+                ]
+
             converted.save(output_file, str(target_format), **save_kwargs)
 
-        print(f"[OK] {input_file.name} -> {output_file.name}")
+        console.print(f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
         return True
 
     except Exception as exc:
-        print(f"[FAIL] {input_file.name} -> {exc}")
+        console.print(f"  [bold red][FAIL][/bold red] {input_file.name} [dim]->[/dim] {exc}")
         return False
 
 
@@ -391,23 +378,6 @@ def batch_convert(
     source_key: str,
     target_key: str,
 ) -> tuple[int, int]:
-    """
-    Convert all matching files in a folder.
-
-    Only files whose extensions match the selected source format
-    are processed. Other files are ignored.
-
-    Args:
-        input_folder: Folder containing the source files.
-        output_folder: Destination folder for converted files.
-        source_key: Selected source format key.
-        target_key: Selected target format key.
-
-    Returns:
-        tuple[int, int]:
-            - successful conversion count
-            - failed conversion count
-    """
     source_info = FORMATS[source_key]
     source_exts = source_info["extensions"]
 
@@ -418,16 +388,19 @@ def batch_convert(
     ]
 
     if not files:
-        print(f"\nNo supported files found in: {input_folder}")
-        print(f"Expected extensions: {', '.join(source_exts)}")
+        console.print(f"\n[yellow]No supported files found in:[/yellow] {input_folder}")
+        console.print(f"[dim]Expected extensions: {', '.join(source_exts)}[/dim]")
         return (0, 0)
 
-    print("\n" + "=" * 80)
-    print("Batch conversion started")
-    print(f"Input folder  : {input_folder}")
-    print(f"Output folder : {output_folder}")
-    print(f"Files found   : {len(files)}")
-    print("=" * 80 + "\n")
+    header = (
+        f"[cyan][>][/cyan] Input folder  : [green]{input_folder}[/green]\n"
+        f"[cyan][>][/cyan] Output folder : [green]{output_folder}[/green]\n"
+        f"[cyan][>][/cyan] Files found   : [bold white]{len(files)}[/bold white]"
+    )
+    console.print(
+        Panel(header, title="[bold yellow]Batch Conversion[/bold yellow]", border_style="cyan")
+    )
+    console.print()
 
     success_count = 0
     failed_count = 0
@@ -440,12 +413,14 @@ def batch_convert(
         else:
             failed_count += 1
 
-    print("\n" + "=" * 80)
-    print("Batch conversion complete.")
-    print(f"Successful: {success_count}")
-    print(f"Failed    : {failed_count}")
-    print(f"Saved to  : {output_folder}")
-    print("=" * 80)
+    summary = (
+        f"[bold green]Successful:[/bold green] {success_count}\n"
+        f"[bold red]Failed    :[/bold red] {failed_count}\n"
+        f"[cyan]Saved to  :[/cyan] [green]{output_folder}[/green]"
+    )
+    console.print(
+        Panel(summary, title="[bold yellow]Batch Complete[/bold yellow]", border_style="green")
+    )
 
     return (success_count, failed_count)
 
@@ -456,70 +431,58 @@ def individual_convert(
     source_key: str,
     target_key: str,
 ) -> tuple[int, int]:
-    """
-    Convert a single file and print a summary.
-
-    Args:
-        input_file: Full path to the source file.
-        output_folder: Destination folder for the converted file.
-        source_key: Selected source format key.
-        target_key: Selected target format key.
-
-    Returns:
-        tuple[int, int]:
-            - (1, 0) if successful
-            - (0, 1) if failed
-    """
-    print("\n" + "=" * 80)
-    print("Individual conversion started")
-    print(f"Input file    : {input_file}")
-    print(f"Output folder : {output_folder}")
-    print("=" * 80 + "\n")
+    header = (
+        f"[cyan][>][/cyan] Input file    : [green]{input_file}[/green]\n"
+        f"[cyan][>][/cyan] Output folder : [green]{output_folder}[/green]"
+    )
+    console.print(
+        Panel(header, title="[bold yellow]Individual Conversion[/bold yellow]", border_style="cyan")
+    )
+    console.print()
 
     ok = convert_single_file(input_file, output_folder, source_key, target_key)
 
-    print("\n" + "=" * 80)
-    print("Individual conversion complete.")
-    print(f"Successful: {1 if ok else 0}")
-    print(f"Failed    : {0 if ok else 1}")
-    print(f"Saved to  : {output_folder}")
-    print("=" * 80)
+    summary = (
+        f"[bold green]Successful:[/bold green] {1 if ok else 0}\n"
+        f"[bold red]Failed    :[/bold red] {0 if ok else 1}\n"
+        f"[cyan]Saved to  :[/cyan] [green]{output_folder}[/green]"
+    )
+    console.print(
+        Panel(
+            summary,
+            title="[bold yellow]Conversion Complete[/bold yellow]",
+            border_style="green" if ok else "red",
+        )
+    )
 
     return (1, 0) if ok else (0, 1)
 
 
 def prompt_next_action() -> str:
-    """
-    Display the post-conversion menu and collect the user's next action.
+    menu = (
+        "[bold green][1][/bold green] Convert again\n"
+        "[bold green][2][/bold green] View source code\n"
+        "[bold green][3][/bold green] Visit GitHub profile\n\n"
+        "[bold red][4][/bold red] Exit"
+    )
+    console.print(
+        Panel(
+            menu,
+            title="[bold yellow]What's Next?[/bold yellow]",
+            border_style="white",
+        )
+    )
 
-    Returns:
-        str: A valid action key from '1' to '4'.
-    """
     while True:
-        print("\nWhat would you like to do next?")
-        print("  1 - Convert again")
-        print("  2 - View source code")
-        print("  3 - Visit GitHub profile")
-        print("  4 - Exit")
-        print()
-
-        choice = input("Enter your choice (1-4): ").strip()
+        choice = input("\n[>] Enter your choice (1-4): ").strip()
 
         if choice in {"1", "2", "3", "4"}:
             return choice
 
-        print("Invalid choice. Please enter 1, 2, 3, or 4.\n")
+        console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]\n")
 
 
 def handle_post_action() -> bool:
-    """
-    Handle the user's selected post-conversion action.
-
-    Returns:
-        bool:
-            - True if the user wants to perform another conversion
-            - False if the user chooses to exit
-    """
     while True:
         choice = prompt_next_action()
 
@@ -533,26 +496,11 @@ def handle_post_action() -> bool:
             open_link(GITHUB_PROFILE_URL, "GitHub profile")
 
         elif choice == "4":
-            print(f"\nThank you for using {APP_NAME}. Goodbye!")
+            console.print(f"\n[bold cyan]Thank you for using {APP_NAME}. Goodbye![/bold cyan]")
             return False
 
 
 def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
-    """
-    Run the full interactive input flow for a conversion job.
-
-    Flow:
-    - choose mode
-    - choose source format
-    - choose target format
-    - collect input path
-    - collect output path
-    - validate all values before returning
-
-    Returns:
-        tuple[str, str, str, Path, Path]:
-            mode, source_key, target_key, input_path, output_path
-    """
     while True:
         try:
             print_banner()
@@ -563,7 +511,7 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
                 raise KeyboardInterrupt
 
             if mode == "4":
-                print("\nThank you for using Picture Converter CLI.")
+                console.print("\n[bold cyan]Thank you for using Image Converter.[/bold cyan]")
                 raise SystemExit(0)
 
             source_key = prompt_source_format()
@@ -608,7 +556,7 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
             return mode, source_key, target_key, input_path, output_path
 
         except Exception as exc:
-            print(f"\nError: {exc}")
+            console.print(f"\n[bold red]Error:[/bold red] {exc}")
             retry = input("Would you like to try again? (y/n): ").strip().lower()
 
             if retry != "y":
@@ -616,9 +564,6 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
 
 def interactive_mode() -> None:
-    """
-    Start and maintain the main interactive application loop.
-    """
     while True:
         try:
             mode, source_key, target_key, input_path, output_path = (
@@ -638,29 +583,15 @@ def interactive_mode() -> None:
 
 
 def print_cli_usage() -> None:
-    """
-    Print the intended usage message for the current version.
-
-    This version is interactive-first, so additional CLI arguments
-    are not currently supported.
-    """
-    print("Usage:")
-    print("  python convert_pics.py")
-    print("\nThis version uses interactive mode for a guided conversion flow.")
+    console.print("[bold cyan]Usage:[/bold cyan]")
+    console.print("  python convert_pics.py")
+    console.print("\n[dim]This version uses interactive mode for a guided conversion flow.[/dim]")
 
 
 def main() -> None:
-    """
-    Application entry point.
-
-    Behavior:
-    - If arguments are passed, show usage guidance and continue
-      into interactive mode.
-    - Otherwise, launch the interactive workflow directly.
-    """
     if len(sys.argv) > 1:
         print_cli_usage()
-        print("\nOpening interactive mode instead...\n")
+        console.print("\n[dim]Opening interactive mode instead...[/dim]\n")
 
     interactive_mode()
 

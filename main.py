@@ -1,100 +1,93 @@
 #!/usr/bin/env python3
-"""
-CLI Toolbox Launcher
-
-This script serves as the main entry point for the CLI Toolbox project.
-It allows users to select and launch different tools from a centralized menu.
-"""
 
 from __future__ import annotations
 
 import os
+import sys
 import webbrowser
 
+from pyfiglet import figlet_format
+from rich.console import Console
+from rich.panel import Panel
+
 from tools.image_converter.run import main as image_converter
+from tools.yt_downloader.run import main as yt_downloader
 
 PROJECT_NAME = "CLI Toolbox"
 DEVELOPER = "Mohammad Aldrin Said"
 SOURCE_CODE_URL = "https://github.com/YzrSaid/cli-toolbox"
+VERSION = "1.0"
+
+console = Console()
 
 
 def clear_screen() -> None:
-    """
-    Clear the terminal screen for a cleaner CLI experience.
-    Supports Windows, Linux, and macOS.
-    """
     os.system("cls" if os.name == "nt" else "clear")
 
 
-def print_banner() -> None:
-    """
-    Display the main launcher banner.
-    """
-    print(
-        r"""
-  _____ _      _____   _______          _ _                
- / ____| |    |_   _| |__   __|        | | |               
-| |    | |      | |      | | ___   ___ | | |__   _____  __
-| |    | |      | |      | |/ _ \ / _ \| | '_ \ / _ \ \/ /
-| |____| |____ _| |_     | | (_) | (_) | | |_) | (_) >  < 
- \_____|______|_____|    |_|\___/ \___/|_|_.__/ \___/_/\_\
-"""
+def show_banner() -> None:
+    banner = figlet_format(PROJECT_NAME, font="big")
+    console.print(f"[bold bright_green]{banner}[/bold bright_green]")
+    info = (
+        f"[cyan][>][/cyan] Github  : [green]{SOURCE_CODE_URL}[/green]\n"
+        f"[cyan][>][/cyan] Author  : [green]{DEVELOPER}[/green]\n"
+        f"[cyan][>][/cyan] Version : [green]{VERSION}[/green]"
     )
-    print(f"{DEVELOPER}")
-    print("© 2026 All Rights Reserved.")
+    console.print(Panel(info, border_style="bright_black"))
 
 
-def print_menu() -> None:
-    """
-    Display the list of available tools and Options.
-    """
-    print("\nAvailable Options:\n")
-    print(" 1 - Image Converter")
-    print(" 2 - View Source Code")
-    print(" 3 - Exit\n")
+def show_menu() -> None:
+    menu = (
+        "[bold green][1][/bold green] Image Converter\n"
+        "[bold green][2][/bold green] YouTube Downloader\n"
+        "[bold green][3][/bold green] View Source Code\n\n"
+        "[bold red][4][/bold red] Exit"
+    )
+    console.print(
+        Panel(
+            menu, title="[bold yellow]Main Menu[/bold yellow]", border_style="white")
+    )
 
 
 def open_source_code() -> None:
-    """
-    Open the CLI Toolbox GitHub repository in the user's browser.
-    """
-    print("\nOpening source code repository...\n")
-
+    console.print(
+        f"\n[bold cyan]Opening:[/bold cyan] [green]{SOURCE_CODE_URL}[/green]")
     try:
         opened = webbrowser.open(SOURCE_CODE_URL)
         if not opened:
-            print("Unable to open browser automatically.")
-            print(f"Source Code: {SOURCE_CODE_URL}")
+            console.print("[red]Unable to open browser automatically.[/red]")
+            console.print(f"Source Code: [green]{SOURCE_CODE_URL}[/green]")
     except Exception:
-        print("Unable to open browser automatically.")
-        print(f"Source Code: {SOURCE_CODE_URL}")
+        console.print("[red]Unable to open browser automatically.[/red]")
+        console.print(f"Source Code: [green]{SOURCE_CODE_URL}[/green]")
 
 
 def main() -> None:
-    """
-    Run the CLI Toolbox launcher loop.
-    """
     while True:
         clear_screen()
-        print_banner()
-        print_menu()
+        show_banner()
+        show_menu()
 
-        choice = input("Select an option: ").strip()
+        choice = input("\n[>] Select Option: ").strip()
 
         if choice == "1":
             clear_screen()
             image_converter()
 
         elif choice == "2":
+            clear_screen()
+            yt_downloader()
+
+        elif choice == "3":
             open_source_code()
             input("\nPress Enter to return to menu...")
 
-        elif choice == "3":
-            print("\nCiao! Thank you for using CLI Toolbox.")
-            break
+        elif choice == "4":
+            console.print("\n[bold red]Exiting...[/bold red]")
+            sys.exit()
 
         else:
-            print("\nInvalid option. Please try again.")
+            console.print("[red]Invalid option.[/red]")
             input("Press Enter to continue...")
 
 

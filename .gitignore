@@ -4,3 +4,9 @@ __pycache__/
 *.pyo 
 *.pyd 
 .env
+
+# PyInstaller
+build/
+dist
+*.spec
+.build-venv
