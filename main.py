@@ -10,6 +10,7 @@ from pyfiglet import figlet_format
 from rich.console import Console
 from rich.panel import Panel
 
+from tools.batch_renamer.run import main as batch_renamer
 from tools.image_converter.run import main as image_converter
 from tools.yt_downloader.run import main as yt_downloader
 
@@ -40,8 +41,9 @@ def show_menu() -> None:
     menu = (
         "[bold green][1][/bold green] Image Converter\n"
         "[bold green][2][/bold green] YouTube Downloader\n"
-        "[bold green][3][/bold green] View Source Code\n\n"
-        "[bold red][4][/bold red] Exit"
+        "[bold green][3][/bold green] Batch Renamer\n"
+        "[bold green][4][/bold green] View Source Code\n\n"
+        "[bold red][5][/bold red] Exit"
     )
     console.print(
         Panel(
@@ -79,10 +81,14 @@ def main() -> None:
             yt_downloader()
 
         elif choice == "3":
+            clear_screen()
+            batch_renamer()
+
+        elif choice == "4":
             open_source_code()
             input("\nPress Enter to return to menu...")
 
-        elif choice == "4":
+        elif choice == "5":
             console.print("\n[bold red]Exiting...[/bold red]")
             sys.exit()
 

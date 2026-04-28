@@ -31,9 +31,18 @@ try:
 except Exception:
     HEIF_SUPPORT_AVAILABLE = False
 
+
+class Cancelled(Exception):
+    pass
+
+
+class GoBack(Exception):
+    pass
+
 # ------------------------------------------------------------
 # Application metadata
 # ------------------------------------------------------------
+
 
 APP_NAME = "Image Converter"
 APP_VERSION = "1.2.0"
@@ -131,11 +140,14 @@ def print_banner() -> None:
 
 
 def prompt_non_empty(message: str) -> str:
+    console.print("[dim]Enter q to cancel.[/dim]")
     while True:
-        value = input(message).strip()
+        value = input(message + " ").strip()
+        if value.lower() == "q":
+            raise GoBack()
         if value:
             return value
-        console.print("[red]Input cannot be empty. Please try again.[/red]\n")
+        console.print("[red]Please enter a valid path.[/red]")
 
 
 def open_link(url: str, label: str) -> None:
@@ -273,7 +285,8 @@ def prompt_mode() -> str:
         if choice in {"1", "2", "3", "4"}:
             return choice
 
-        console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]\n")
+        console.print(
+            "[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]\n")
 
 
 def print_formats(
@@ -281,18 +294,24 @@ def print_formats(
     for_target: bool,
     excluded_key: str | None = None,
 ) -> None:
-    choices = get_format_choices(for_target=for_target, excluded_key=excluded_key)
+    choices = get_format_choices(
+        for_target=for_target, excluded_key=excluded_key)
     console.print()
     for key, data in choices.items():
         console.print(f"  [bold green][{key}][/bold green] {data['label']}")
+    console.print(f"  [bold red][0][/bold red] Cancel")
     console.print()
 
 
 def prompt_source_format() -> str:
     while True:
-        console.print("\n[bold cyan]Choose the source image format:[/bold cyan]")
+        console.print(
+            "\n[bold cyan]Choose the source image format:[/bold cyan]")
         print_formats(for_target=False)
         choice = input("[>] Enter source format number: ").strip()
+
+        if choice == "0":
+            raise Cancelled()
 
         if choice in get_format_choices(for_target=False):
             if choice == "7" and not HEIF_SUPPORT_AVAILABLE:
@@ -308,14 +327,19 @@ def prompt_source_format() -> str:
 
 def prompt_target_format(excluded_key: str) -> str:
     while True:
-        console.print("\n[bold cyan]Choose the target image format:[/bold cyan]")
+        console.print(
+            "\n[bold cyan]Choose the target image format:[/bold cyan]")
         print_formats(for_target=True, excluded_key=excluded_key)
         choice = input("[>] Enter target format number: ").strip()
+
+        if choice == "0":
+            raise Cancelled()
 
         if choice in get_format_choices(for_target=True, excluded_key=excluded_key):
             return choice
 
-        console.print("[red]Invalid choice. Please choose a different target format.[/red]\n")
+        console.print(
+            "[red]Invalid choice. Please choose a different target format.[/red]\n")
 
 
 def convert_single_file(
@@ -335,7 +359,8 @@ def convert_single_file(
 
             if target_format == "SVG":
                 save_as_svg_with_embedded_png(img, output_file)
-                console.print(f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
+                console.print(
+                    f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
                 return True
 
             converted = convert_image_for_target(img, str(target_format))
@@ -364,11 +389,13 @@ def convert_single_file(
 
             converted.save(output_file, str(target_format), **save_kwargs)
 
-        console.print(f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
+        console.print(
+            f"  [bold green][OK][/bold green]   {input_file.name} [dim]->[/dim] {output_file.name}")
         return True
 
     except Exception as exc:
-        console.print(f"  [bold red][FAIL][/bold red] {input_file.name} [dim]->[/dim] {exc}")
+        console.print(
+            f"  [bold red][FAIL][/bold red] {input_file.name} [dim]->[/dim] {exc}")
         return False
 
 
@@ -388,8 +415,10 @@ def batch_convert(
     ]
 
     if not files:
-        console.print(f"\n[yellow]No supported files found in:[/yellow] {input_folder}")
-        console.print(f"[dim]Expected extensions: {', '.join(source_exts)}[/dim]")
+        console.print(
+            f"\n[yellow]No supported files found in:[/yellow] {input_folder}")
+        console.print(
+            f"[dim]Expected extensions: {', '.join(source_exts)}[/dim]")
         return (0, 0)
 
     header = (
@@ -398,7 +427,8 @@ def batch_convert(
         f"[cyan][>][/cyan] Files found   : [bold white]{len(files)}[/bold white]"
     )
     console.print(
-        Panel(header, title="[bold yellow]Batch Conversion[/bold yellow]", border_style="cyan")
+        Panel(
+            header, title="[bold yellow]Batch Conversion[/bold yellow]", border_style="cyan")
     )
     console.print()
 
@@ -406,7 +436,8 @@ def batch_convert(
     failed_count = 0
 
     for file_path in files:
-        ok = convert_single_file(file_path, output_folder, source_key, target_key)
+        ok = convert_single_file(
+            file_path, output_folder, source_key, target_key)
 
         if ok:
             success_count += 1
@@ -419,7 +450,8 @@ def batch_convert(
         f"[cyan]Saved to  :[/cyan] [green]{output_folder}[/green]"
     )
     console.print(
-        Panel(summary, title="[bold yellow]Batch Complete[/bold yellow]", border_style="green")
+        Panel(
+            summary, title="[bold yellow]Batch Complete[/bold yellow]", border_style="green")
     )
 
     return (success_count, failed_count)
@@ -436,7 +468,8 @@ def individual_convert(
         f"[cyan][>][/cyan] Output folder : [green]{output_folder}[/green]"
     )
     console.print(
-        Panel(header, title="[bold yellow]Individual Conversion[/bold yellow]", border_style="cyan")
+        Panel(
+            header, title="[bold yellow]Individual Conversion[/bold yellow]", border_style="cyan")
     )
     console.print()
 
@@ -458,12 +491,10 @@ def individual_convert(
     return (1, 0) if ok else (0, 1)
 
 
-def prompt_next_action() -> str:
+def handle_post_action() -> bool:
     menu = (
-        "[bold green][1][/bold green] Convert again\n"
-        "[bold green][2][/bold green] View source code\n"
-        "[bold green][3][/bold green] Visit GitHub profile\n\n"
-        "[bold red][4][/bold red] Exit"
+        "[bold green][1][/bold green] Convert again\n\n"
+        "[bold red][2][/bold red] Back to main menu"
     )
     console.print(
         Panel(
@@ -474,30 +505,14 @@ def prompt_next_action() -> str:
     )
 
     while True:
-        choice = input("\n[>] Enter your choice (1-4): ").strip()
-
-        if choice in {"1", "2", "3", "4"}:
-            return choice
-
-        console.print("[red]Invalid choice. Please enter 1, 2, 3, or 4.[/red]\n")
-
-
-def handle_post_action() -> bool:
-    while True:
-        choice = prompt_next_action()
+        choice = input("\n[>] Enter your choice: ").strip()
 
         if choice == "1":
             return True
-
         if choice == "2":
-            open_link(SOURCE_CODE_URL, "source code")
-
-        elif choice == "3":
-            open_link(GITHUB_PROFILE_URL, "GitHub profile")
-
-        elif choice == "4":
-            console.print(f"\n[bold cyan]Thank you for using {APP_NAME}. Goodbye![/bold cyan]")
             return False
+
+        console.print("[red]Enter 1 or 2.[/red]\n")
 
 
 def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
@@ -511,7 +526,8 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
                 raise KeyboardInterrupt
 
             if mode == "4":
-                console.print("\n[bold cyan]Thank you for using Image Converter.[/bold cyan]")
+                console.print(
+                    "\n[bold cyan]Thank you for using Image Converter.[/bold cyan]")
                 raise SystemExit(0)
 
             source_key = prompt_source_format()
@@ -519,7 +535,7 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
             if mode == "1":
                 input_folder_raw = prompt_non_empty(
-                    "\nEnter the absolute input folder path: "
+                    "Enter the absolute input folder path: "
                 )
                 output_folder_raw = input(
                     f"Enter the absolute output folder path\n"
@@ -533,7 +549,8 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
                 return mode, source_key, target_key, input_path, output_path
 
-            input_file_raw = prompt_non_empty("\nEnter the absolute input file path: ")
+            input_file_raw = prompt_non_empty(
+                "\nEnter the absolute input file path: ")
             output_folder_raw = input(
                 f"Enter the absolute output folder path\n"
                 f"(leave blank to use default: {get_default_output_folder()}): "
@@ -555,9 +572,12 @@ def collect_conversion_inputs() -> tuple[str, str, str, Path, Path]:
 
             return mode, source_key, target_key, input_path, output_path
 
+        except (Cancelled, GoBack):
+            raise
         except Exception as exc:
             console.print(f"\n[bold red]Error:[/bold red] {exc}")
-            retry = input("Would you like to try again? (y/n): ").strip().lower()
+            retry = input(
+                "Would you like to try again? (y/n): ").strip().lower()
 
             if retry != "y":
                 raise SystemExit(1)
@@ -573,10 +593,30 @@ def interactive_mode() -> None:
             if mode == "1":
                 batch_convert(input_path, output_path, source_key, target_key)
             else:
-                individual_convert(input_path, output_path, source_key, target_key)
+                individual_convert(input_path, output_path,
+                                   source_key, target_key)
 
             if not handle_post_action():
                 break
+
+        except GoBack:
+            return
+
+        except Cancelled:
+            console.print("\n[yellow]Cancelled.[/yellow]")
+            menu = (
+                "[bold green]\\[y][/bold green] Try again\n\n"
+                "[bold red]\\[n][/bold red] Back to main menu"
+            )
+            console.print(Panel(
+                menu, title="[bold yellow]What's Next?[/bold yellow]", border_style="white"))
+            while True:
+                ans = input("\n[>] Select option: ").strip().lower()
+                if ans == "y":
+                    break
+                if ans == "n":
+                    return
+                console.print("[red]Enter y or n.[/red]")
 
         except KeyboardInterrupt:
             return
@@ -585,7 +625,8 @@ def interactive_mode() -> None:
 def print_cli_usage() -> None:
     console.print("[bold cyan]Usage:[/bold cyan]")
     console.print("  python convert_pics.py")
-    console.print("\n[dim]This version uses interactive mode for a guided conversion flow.[/dim]")
+    console.print(
+        "\n[dim]This version uses interactive mode for a guided conversion flow.[/dim]")
 
 
 def main() -> None:

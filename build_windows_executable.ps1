@@ -15,7 +15,7 @@ $ROOT_DIR    = $PSScriptRoot
 $DIST_DIR    = "$ROOT_DIR\dist"
 $BUILD_DIR   = "$ROOT_DIR\build"
 $SPEC_FILE   = "$ROOT_DIR\cli-toolbox.spec"
-$VENV_DIR    = "$ROOT_DIR\.build-venv"
+$VENV_DIR    = "$ROOT_DIR\.build-venv-win"
 $PYTHON_BIN  = "$VENV_DIR\Scripts\python.exe"
 
 Write-Host "[1/3] Setting up build environment..." -ForegroundColor Cyan

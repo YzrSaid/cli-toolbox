@@ -10,3 +10,4 @@ build/
 dist
 *.spec
 .build-venv
+.build-venv-win
