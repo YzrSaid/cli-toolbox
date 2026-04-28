@@ -355,6 +355,11 @@ def convert_single_file(
 
     try:
         with Image.open(input_file) as img:
+            # Strip embedded ICC profile before load — certain WebP files
+            # have a zlib-compressed profile that triggers "incorrect header check"
+            img.info.pop("icc_profile", None)
+            img.load()
+
             output_file = output_folder / f"{input_file.stem}{target_ext}"
 
             if target_format == "SVG":
